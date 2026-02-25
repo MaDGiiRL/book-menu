@@ -5,7 +5,7 @@ function clamp(n, a, b) {
     return Math.min(b, Math.max(a, n));
 }
 
-export default function Book3D({ totalPages = 16, ext = "webp", title = "Documento" }) {
+export default function Book3D({ totalPages = 15, ext = "webp", title = "Documento" }) {
     // meglio pari per spread
     const PAGES = totalPages % 2 === 0 ? totalPages : totalPages + 1;
     const SPREADS = PAGES / 2;
