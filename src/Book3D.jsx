@@ -244,9 +244,7 @@ export default function Book3D({ totalPages = 16, ext = "webp", title = "Documen
 
                         {/* controls */}
                         <div className="flex flex-col gap-3 border-t border-neutral-800 bg-neutral-950/30 p-4 sm:flex-row sm:items-center">
-                            <div className="text-xs text-neutral-400">
-                                Mobile: swipe ◀︎▶︎ • Desktop: ← → • Home/End per inizio/fine
-                            </div>
+                           
 
                             <div className="ml-auto flex items-center gap-2">
                                 <button
