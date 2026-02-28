@@ -1,12 +1,12 @@
-// Book3D.jsx
+// BookFlat.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import "./book3d.css";
+import "./bookflat.css";
 
 function clamp(n, a, b) {
     return Math.min(b, Math.max(a, n));
 }
 
-export default function Book3D({ totalPages = 15, ext = "webp", title = "Menù Digitale" }) {
+export default function BookFlat({ totalPages = 15, ext = "webp", title = "Menù Digitale" }) {
     // meglio pari per spread
     const PAGES = totalPages % 2 === 0 ? totalPages : totalPages + 1;
     const SPREADS = PAGES / 2;
@@ -16,10 +16,10 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Menù D
     // mobile: pagina (0..PAGES-1) | desktop: spread (0..SPREADS-1)
     const [idx, setIdx] = useState(0);
 
-    // flip
-    const [flipping, setFlipping] = useState(false);
-    const [flipDir, setFlipDir] = useState("next"); // next | prev
-    const durationMs = 560;
+    // piccola animazione fade (puoi metterla a false per zero animazione)
+    const [useFade] = useState(true);
+    const [fading, setFading] = useState(false);
+    const fadeMs = 140;
 
     // swipe support
     const touchRef = useRef({ x: 0, y: 0, t: 0 });
@@ -35,7 +35,6 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Menù D
 
     // riallinea indice quando passi mobile <-> desktop
     useEffect(() => {
-        setFlipping(false);
         setIdx((old) => {
             if (isMobile) return clamp(old * 2, 0, PAGES - 1);
             return clamp(Math.floor(old / 2), 0, SPREADS - 1);
@@ -71,31 +70,45 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Menù D
         }
     }, [isMobile, idx, PAGES]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const startFlipNext = () => {
-        if (!canNext || flipping) return;
-        setFlipDir("next");
-        setFlipping(true);
+    const go = (dir) => {
+        if (dir === "prev" && !canPrev) return;
+        if (dir === "next" && !canNext) return;
+
+        const nextIdx = clamp(
+            dir === "next" ? idx + 1 : idx - 1,
+            0,
+            isMobile ? PAGES - 1 : SPREADS - 1
+        );
+
+        if (!useFade) {
+            setIdx(nextIdx);
+            return;
+        }
+
+        setFading(true);
+        window.setTimeout(() => {
+            setIdx(nextIdx);
+            // un frame dopo, torna opaco
+            requestAnimationFrame(() => setFading(false));
+        }, fadeMs);
     };
 
-    const startFlipPrev = () => {
-        if (!canPrev || flipping) return;
-        setFlipDir("prev");
-        setFlipping(true);
-    };
+    const goNext = () => go("next");
+    const goPrev = () => go("prev");
 
     // keyboard
     useEffect(() => {
         const onKey = (e) => {
-            if (e.key === "ArrowRight") startFlipNext();
-            if (e.key === "ArrowLeft") startFlipPrev();
-            if (e.key === "Home" && !flipping) setIdx(0);
-            if (e.key === "End" && !flipping) setIdx(isMobile ? PAGES - 1 : SPREADS - 1);
+            if (e.key === "ArrowRight") goNext();
+            if (e.key === "ArrowLeft") goPrev();
+            if (e.key === "Home") setIdx(0);
+            if (e.key === "End") setIdx(isMobile ? PAGES - 1 : SPREADS - 1);
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [flipping, isMobile, PAGES, SPREADS, canNext, canPrev]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [isMobile, PAGES, SPREADS, idx]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // swipe (solo mobile)
+    // swipe (solo mobile): non rovina lo scroll verticale
     const onTouchStart = (e) => {
         const t = e.touches[0];
         touchRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
@@ -107,55 +120,28 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Menù D
         const dx = t.clientX - touchRef.current.x;
         const dy = t.clientY - touchRef.current.y;
 
-        // gesto “intenzionale”
         if (dt > 800) return;
-
-        // deve essere più orizzontale che verticale
         if (Math.abs(dx) < 50) return;
         if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
 
-        if (dx < 0) startFlipNext();
-        else startFlipPrev();
+        if (dx < 0) goNext();
+        else goPrev();
     };
 
-    // onTransitionEnd: chiude flip e aggiorna idx in modo simmetrico
-    const onFlipEnd = () => {
-        if (!flipping) return;
-
-        setIdx((v) => {
-            const nextIdx = flipDir === "next" ? v + 1 : v - 1;
-            return clamp(nextIdx, 0, isMobile ? PAGES - 1 : SPREADS - 1);
-        });
-
-        setFlipping(false);
-    };
-
-    // TOP = quello visibile adesso
-    const desktopTop = useMemo(() => {
+    // cosa mostrare
+    const desktopSpread = useMemo(() => {
         const left = idx * 2 + 1;
         return { left, right: left + 1 };
     }, [idx]);
 
-    const mobileTop = useMemo(() => idx + 1, [idx]);
-
-    // UNDER = target sotto durante flip
-    const desktopUnder = useMemo(() => {
-        const target = clamp(flipDir === "next" ? idx + 1 : idx - 1, 0, SPREADS - 1);
-        const left = target * 2 + 1;
-        return { left, right: left + 1 };
-    }, [idx, flipDir, SPREADS]);
-
-    const mobileUnder = useMemo(() => {
-        const target = clamp(flipDir === "next" ? idx + 1 : idx - 1, 0, PAGES - 1);
-        return target + 1; // 1..PAGES
-    }, [idx, flipDir, PAGES]);
+    const mobilePage = useMemo(() => idx + 1, [idx]);
 
     return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
             {/* header */}
             <div className="mx-auto max-w-6xl px-4 pt-6">
                 <div className="flex items-center gap-3">
-                    <div className="text-xl font-semibold tracking-tight">Menù Digitale La Paesana For Family</div>
+                    <div className="text-xl font-semibold tracking-tight">{title}</div>
                     <div className="ml-auto flex items-center gap-2 text-sm text-neutral-300">
                         <span className="rounded-full bg-neutral-800 px-3 py-1">
                             {isMobile ? `Pagina ${idx + 1}/${PAGES}` : `Spread ${idx + 1}/${SPREADS}`}
@@ -171,208 +157,96 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Menù D
 
             {/* stage */}
             <div className="mx-auto max-w-6xl px-4 pb-10 pt-6">
-                <div className="stage">
-                    <div className="book3d relative rounded-[26px] border border-neutral-800 bg-neutral-900 shadow-2xl">
-                        {/* viewport */}
-                        <div className="relative overflow-hidden rounded-[26px]">
-                            {/* spine desktop */}
-                            <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-[2px] -translate-x-1/2 bg-neutral-800/80 md:block" />
-                            <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-12 -translate-x-1/2 bg-gradient-to-r from-neutral-900/0 via-neutral-950/40 to-neutral-900/0 md:block" />
+                <div className="frame rounded-[26px] border border-neutral-800 bg-neutral-900 shadow-2xl">
+                    <div
+                        className="viewer relative overflow-hidden rounded-[26px]"
+                        onTouchStart={isMobile ? onTouchStart : undefined}
+                        onTouchEnd={isMobile ? onTouchEnd : undefined}
+                    >
+                        {/* spine desktop */}
+                        <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-[2px] -translate-x-1/2 bg-neutral-800/80 md:block" />
+                        <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-12 -translate-x-1/2 bg-gradient-to-r from-neutral-900/0 via-neutral-950/40 to-neutral-900/0 md:block" />
 
-                            <div
-                                className="viewer relative aspect-[3/4] w-full md:aspect-[16/10]"
-                                onTouchStart={isMobile ? onTouchStart : undefined}
-                                onTouchEnd={isMobile ? onTouchEnd : undefined}
+                        <div className={`content relative aspect-[3/4] w-full md:aspect-[16/10] ${fading ? "is-fading" : ""}`}>
+                            {isMobile ? (
+                                <Single page={mobilePage} srcFor={srcFor} />
+                            ) : (
+                                <Spread left={desktopSpread.left} right={desktopSpread.right} srcFor={srcFor} />
+                            )}
+                        </div>
+                    </div>
+
+                    {/* controls */}
+                    <div className="flex flex-col gap-3 border-t border-neutral-800 bg-neutral-950/30 p-4 sm:flex-row sm:items-center">
+                        <div className="ml-auto flex items-center gap-2">
+                            <button
+                                onClick={goPrev}
+                                disabled={!canPrev}
+                                className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-neutral-100 transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                                {/* UNDER */}
-                                {isMobile ? (
-                                    <SinglePage page={mobileUnder} srcFor={srcFor} />
-                                ) : (
-                                    <Spread left={desktopUnder.left} right={desktopUnder.right} srcFor={srcFor} />
-                                )}
-
-                                {/* TOP LEAF (flippa) */}
-                                <div
-                                    className="leaf absolute inset-0"
-                                    style={{
-                                        transformOrigin: flipDir === "next" ? "left center" : "right center",
-                                        transform: flipping
-                                            ? `rotateY(${flipDir === "next" ? -180 : 180}deg)`
-                                            : "rotateY(0deg)",
-                                        transition: `transform ${durationMs}ms cubic-bezier(.2,.8,.2,1)`,
-                                        zIndex: 10,
-                                    }}
-                                    onTransitionEnd={onFlipEnd}
-                                >
-                                    {/* FRONT */}
-                                    <div className="face absolute inset-0 paper">
-                                        {isMobile ? (
-                                            <SingleFront page={mobileTop} srcFor={srcFor} />
-                                        ) : (
-                                            <SpreadFront left={desktopTop.left} right={desktopTop.right} srcFor={srcFor} />
-                                        )}
-                                    </div>
-
-                                    {/* BACK */}
-                                    <div className="face back absolute inset-0 paper bg-neutral-900">
-                                        {isMobile ? (
-                                            <SingleBack page={mobileTop} srcFor={srcFor} />
-                                        ) : (
-                                            <SpreadBack left={desktopTop.left} right={desktopTop.right} srcFor={srcFor} />
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* controls */}
-                        <div className="flex flex-col gap-3 border-t border-neutral-800 bg-neutral-950/30 p-4 sm:flex-row sm:items-center">
-                            <div className="ml-auto flex items-center gap-2">
-                                <button
-                                    onClick={startFlipPrev}
-                                    disabled={!canPrev || flipping}
-                                    className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-neutral-100 transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                    ◀︎ Indietro
-                                </button>
-                                <button
-                                    onClick={startFlipNext}
-                                    disabled={!canNext || flipping}
-                                    className="rounded-xl border border-neutral-700 bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                    Avanti ▶︎
-                                </button>
-                            </div>
+                                ◀︎ Indietro
+                            </button>
+                            <button
+                                onClick={goNext}
+                                disabled={!canNext}
+                                className="rounded-xl border border-neutral-700 bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                Avanti ▶︎
+                            </button>
                         </div>
                     </div>
+                </div>
 
-                    <div className="mt-4 text-center text-sm text-neutral-400">
-                        {isMobile ? (
-                            <>
-                                Pagina {idx + 1} di {PAGES}
-                            </>
-                        ) : (
-                            <>
-                                Pagine {idx * 2 + 1}–{idx * 2 + 2} di {PAGES}
-                            </>
-                        )}
-                    </div>
+                <div className="mt-4 text-center text-sm text-neutral-400">
+                    {isMobile ? (
+                        <>
+                            Pagina {idx + 1} di {PAGES}
+                        </>
+                    ) : (
+                        <>
+                            Pagine {idx * 2 + 1}–{idx * 2 + 2} di {PAGES}
+                        </>
+                    )}
                 </div>
             </div>
         </div>
     );
 }
 
-/* ---------------- UNDER components ---------------- */
+/* ---------------- view components ---------------- */
 
 function Spread({ left, right, srcFor }) {
     return (
-        <div className="absolute inset-0 paper">
-            <SpreadFront left={left} right={right} srcFor={srcFor} />
-        </div>
-    );
-}
-
-function SinglePage({ page, srcFor }) {
-    return (
-        <div className="absolute inset-0 paper">
-            <SingleFront page={page} srcFor={srcFor} />
-        </div>
-    );
-}
-
-/* ---------------- DESKTOP spread faces ---------------- */
-
-function SpreadFront({ left, right, srcFor }) {
-    return (
         <div className="grid h-full grid-cols-2">
-            <div className="relative flex items-center justify-center bg-neutral-950/10">
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-14 gutter-right" />
-                <img
-                    src={srcFor(left)}
-                    alt={`Pagina ${left}`}
-                    className="h-full w-full object-contain p-5 sm:p-8"
-                    draggable={false}
-                />
-                <div className="pointer-events-none absolute bottom-3 left-6 text-xs text-neutral-400">
-                    {left}
-                </div>
-            </div>
+            <PageCell side="left">
+                <img src={srcFor(left)} alt={`Pagina ${left}`} className="page-img" draggable={false} />
+                <div className="page-n page-n-left">{left}</div>
+            </PageCell>
 
-            <div className="relative flex items-center justify-center bg-neutral-950/10">
-                <div className="pointer-events-none absolute inset-y-0 left-0 w-14 gutter-left" />
-                <img
-                    src={srcFor(right)}
-                    alt={`Pagina ${right}`}
-                    className="h-full w-full object-contain p-5 sm:p-8"
-                    draggable={false}
-                />
-                <div className="pointer-events-none absolute bottom-3 right-6 text-xs text-neutral-400">
-                    {right}
-                </div>
-            </div>
+            <PageCell side="right">
+                <img src={srcFor(right)} alt={`Pagina ${right}`} className="page-img" draggable={false} />
+                <div className="page-n page-n-right">{right}</div>
+            </PageCell>
         </div>
     );
 }
 
-function SpreadBack({ left, right, srcFor }) {
-    return (
-        <div className="grid h-full grid-cols-2">
-            <div className="relative flex items-center justify-center bg-neutral-950/18">
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-14 gutter-right" />
-                <img
-                    src={srcFor(right)}
-                    alt=""
-                    className="h-full w-full object-contain p-5 sm:p-8 opacity-90"
-                    style={{ transform: "scaleX(-1)" }}
-                    draggable={false}
-                />
-            </div>
-
-            <div className="relative flex items-center justify-center bg-neutral-950/18">
-                <div className="pointer-events-none absolute inset-y-0 left-0 w-14 gutter-left" />
-                <img
-                    src={srcFor(left)}
-                    alt=""
-                    className="h-full w-full object-contain p-5 sm:p-8 opacity-90"
-                    style={{ transform: "scaleX(-1)" }}
-                    draggable={false}
-                />
-            </div>
-        </div>
-    );
-}
-
-/* ---------------- MOBILE single faces ---------------- */
-
-function SingleFront({ page, srcFor }) {
+function Single({ page, srcFor }) {
     return (
         <div className="relative flex h-full w-full items-center justify-center bg-neutral-950/10">
             <div className="pointer-events-none absolute inset-y-0 left-0 w-10 gutter-left opacity-70" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-10 gutter-right opacity-70" />
-            <img
-                src={srcFor(page)}
-                alt={`Pagina ${page}`}
-                className="h-full w-full object-contain p-5"
-                draggable={false}
-            />
-            <div className="pointer-events-none absolute bottom-3 right-5 text-xs text-neutral-400">
-                {page}
-            </div>
+            <img src={srcFor(page)} alt={`Pagina ${page}`} className="page-img-single" draggable={false} />
+            <div className="page-n page-n-right">{page}</div>
         </div>
     );
 }
 
-function SingleBack({ page, srcFor }) {
+function PageCell({ side, children }) {
     return (
-        <div className="relative flex h-full w-full items-center justify-center bg-neutral-950/18">
-            <img
-                src={srcFor(page)}
-                alt=""
-                className="h-full w-full object-contain p-5 opacity-90"
-                style={{ transform: "scaleX(-1)" }}
-                draggable={false}
-            />
+        <div className={`relative flex items-center justify-center bg-neutral-950/10 ${side === "left" ? "cell-left" : "cell-right"}`}>
+            <div className={`pointer-events-none absolute inset-y-0 ${side === "left" ? "right-0 gutter-right" : "left-0 gutter-left"} w-14`} />
+            {children}
         </div>
     );
 }
