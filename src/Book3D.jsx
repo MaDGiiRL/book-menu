@@ -1,3 +1,4 @@
+// Book3D.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./book3d.css";
 
@@ -5,7 +6,7 @@ function clamp(n, a, b) {
     return Math.min(b, Math.max(a, n));
 }
 
-export default function Book3D({ totalPages = 15, ext = "webp", title = "Documento" }) {
+export default function Book3D({ totalPages = 15, ext = "webp", title = "Menù Digitale" }) {
     // meglio pari per spread
     const PAGES = totalPages % 2 === 0 ? totalPages : totalPages + 1;
     const SPREADS = PAGES / 2;
@@ -79,9 +80,6 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Documen
     const startFlipPrev = () => {
         if (!canPrev || flipping) return;
         setFlipDir("prev");
-        // per il prev: portiamo sotto lo “spread/pagina precedente” subito,
-        // e facciamo ruotare il foglio “da -180 a 0”
-        setIdx((v) => v - 1);
         setFlipping(true);
     };
 
@@ -109,61 +107,55 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Documen
         const dx = t.clientX - touchRef.current.x;
         const dy = t.clientY - touchRef.current.y;
 
-        if (Math.abs(dx) < 40) return;
-        if (Math.abs(dy) > 80) return;
-        if (dt > 700) return;
+        // gesto “intenzionale”
+        if (dt > 800) return;
+
+        // deve essere più orizzontale che verticale
+        if (Math.abs(dx) < 50) return;
+        if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
 
         if (dx < 0) startFlipNext();
         else startFlipPrev();
     };
 
-    // onTransitionEnd: chiude flip e aggiorna idx quando vai avanti
+    // onTransitionEnd: chiude flip e aggiorna idx in modo simmetrico
     const onFlipEnd = () => {
         if (!flipping) return;
 
-        if (flipDir === "next") {
-            setIdx((v) => v + 1);
-        }
-        // se prev, idx è già stato decrementato all’inizio
+        setIdx((v) => {
+            const nextIdx = flipDir === "next" ? v + 1 : v - 1;
+            return clamp(nextIdx, 0, isMobile ? PAGES - 1 : SPREADS - 1);
+        });
 
         setFlipping(false);
     };
 
-    // cosa mostrare (UNDER e TOP)
+    // TOP = quello visibile adesso
     const desktopTop = useMemo(() => {
         const left = idx * 2 + 1;
         return { left, right: left + 1 };
     }, [idx]);
 
+    const mobileTop = useMemo(() => idx + 1, [idx]);
+
+    // UNDER = target sotto durante flip
     const desktopUnder = useMemo(() => {
-        const next = flipDir === "next" ? idx + 1 : idx; // prev: già abbiamo idx decrementato
-        const s = clamp(next, 0, SPREADS - 1);
-        const left = s * 2 + 1;
+        const target = clamp(flipDir === "next" ? idx + 1 : idx - 1, 0, SPREADS - 1);
+        const left = target * 2 + 1;
         return { left, right: left + 1 };
     }, [idx, flipDir, SPREADS]);
 
-    const mobileTop = useMemo(() => idx + 1, [idx]);
     const mobileUnder = useMemo(() => {
-        const next = flipDir === "next" ? idx + 2 : idx + 1; // next: sotto è la prossima pagina
-        return clamp(next, 1, PAGES);
+        const target = clamp(flipDir === "next" ? idx + 1 : idx - 1, 0, PAGES - 1);
+        return target + 1; // 1..PAGES
     }, [idx, flipDir, PAGES]);
-
-    // rotazione del foglio
-    // next: 0 -> -180
-    // prev: -180 -> 0 (perché idx è già decrementato e stai “riaprendo”)
-    const rotateY = useMemo(() => {
-        if (!flipping) return flipDir === "prev" ? 0 : 0;
-        return flipDir === "next" ? -180 : 0;
-    }, [flipping, flipDir]);
-
-    const startRotate = flipDir === "prev" ? -180 : 0;
 
     return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
             {/* header */}
             <div className="mx-auto max-w-6xl px-4 pt-6">
                 <div className="flex items-center gap-3">
-                    <div className="text-xl font-semibold tracking-tight">{title}</div>
+                    <div className="text-xl font-semibold tracking-tight">Menù Digitale La Paesana For Family</div>
                     <div className="ml-auto flex items-center gap-2 text-sm text-neutral-300">
                         <span className="rounded-full bg-neutral-800 px-3 py-1">
                             {isMobile ? `Pagina ${idx + 1}/${PAGES}` : `Spread ${idx + 1}/${SPREADS}`}
@@ -188,7 +180,7 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Documen
                             <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-12 -translate-x-1/2 bg-gradient-to-r from-neutral-900/0 via-neutral-950/40 to-neutral-900/0 md:block" />
 
                             <div
-                                className="relative aspect-[3/4] w-full md:aspect-[16/10]"
+                                className="viewer relative aspect-[3/4] w-full md:aspect-[16/10]"
                                 onTouchStart={isMobile ? onTouchStart : undefined}
                                 onTouchEnd={isMobile ? onTouchEnd : undefined}
                             >
@@ -203,24 +195,15 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Documen
                                 <div
                                     className="leaf absolute inset-0"
                                     style={{
-                                        transform: `rotateY(${flipping ? rotateY : 0}deg)`,
+                                        transformOrigin: flipDir === "next" ? "left center" : "right center",
+                                        transform: flipping
+                                            ? `rotateY(${flipDir === "next" ? -180 : 180}deg)`
+                                            : "rotateY(0deg)",
                                         transition: `transform ${durationMs}ms cubic-bezier(.2,.8,.2,1)`,
-                                        // per il prev: parte da -180 e torna a 0
-                                        ...(flipDir === "prev" && flipping ? { transform: "rotateY(0deg)" } : {}),
                                         zIndex: 10,
                                     }}
                                     onTransitionEnd={onFlipEnd}
                                 >
-                                    {/* set posizione iniziale per prev */}
-                                    <div
-                                        className="absolute inset-0"
-                                        style={{
-                                            transform: flipping && flipDir === "prev" ? `rotateY(${startRotate}deg)` : "none",
-                                            opacity: 0,
-                                            pointerEvents: "none",
-                                        }}
-                                    />
-
                                     {/* FRONT */}
                                     <div className="face absolute inset-0 paper">
                                         {isMobile ? (
@@ -244,8 +227,6 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Documen
 
                         {/* controls */}
                         <div className="flex flex-col gap-3 border-t border-neutral-800 bg-neutral-950/30 p-4 sm:flex-row sm:items-center">
-                           
-
                             <div className="ml-auto flex items-center gap-2">
                                 <button
                                     onClick={startFlipPrev}
@@ -267,9 +248,13 @@ export default function Book3D({ totalPages = 15, ext = "webp", title = "Documen
 
                     <div className="mt-4 text-center text-sm text-neutral-400">
                         {isMobile ? (
-                            <>Pagina {idx + 1} di {PAGES}</>
+                            <>
+                                Pagina {idx + 1} di {PAGES}
+                            </>
                         ) : (
-                            <>Pagine {idx * 2 + 1}–{idx * 2 + 2} di {PAGES}</>
+                            <>
+                                Pagine {idx * 2 + 1}–{idx * 2 + 2} di {PAGES}
+                            </>
                         )}
                     </div>
                 </div>
@@ -303,14 +288,28 @@ function SpreadFront({ left, right, srcFor }) {
         <div className="grid h-full grid-cols-2">
             <div className="relative flex items-center justify-center bg-neutral-950/10">
                 <div className="pointer-events-none absolute inset-y-0 right-0 w-14 gutter-right" />
-                <img src={srcFor(left)} alt={`Pagina ${left}`} className="h-full w-full object-contain p-5 sm:p-8" draggable={false} />
-                <div className="pointer-events-none absolute bottom-3 left-6 text-xs text-neutral-400">{left}</div>
+                <img
+                    src={srcFor(left)}
+                    alt={`Pagina ${left}`}
+                    className="h-full w-full object-contain p-5 sm:p-8"
+                    draggable={false}
+                />
+                <div className="pointer-events-none absolute bottom-3 left-6 text-xs text-neutral-400">
+                    {left}
+                </div>
             </div>
 
             <div className="relative flex items-center justify-center bg-neutral-950/10">
                 <div className="pointer-events-none absolute inset-y-0 left-0 w-14 gutter-left" />
-                <img src={srcFor(right)} alt={`Pagina ${right}`} className="h-full w-full object-contain p-5 sm:p-8" draggable={false} />
-                <div className="pointer-events-none absolute bottom-3 right-6 text-xs text-neutral-400">{right}</div>
+                <img
+                    src={srcFor(right)}
+                    alt={`Pagina ${right}`}
+                    className="h-full w-full object-contain p-5 sm:p-8"
+                    draggable={false}
+                />
+                <div className="pointer-events-none absolute bottom-3 right-6 text-xs text-neutral-400">
+                    {right}
+                </div>
             </div>
         </div>
     );
@@ -351,8 +350,15 @@ function SingleFront({ page, srcFor }) {
         <div className="relative flex h-full w-full items-center justify-center bg-neutral-950/10">
             <div className="pointer-events-none absolute inset-y-0 left-0 w-10 gutter-left opacity-70" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-10 gutter-right opacity-70" />
-            <img src={srcFor(page)} alt={`Pagina ${page}`} className="h-full w-full object-contain p-5" draggable={false} />
-            <div className="pointer-events-none absolute bottom-3 right-5 text-xs text-neutral-400">{page}</div>
+            <img
+                src={srcFor(page)}
+                alt={`Pagina ${page}`}
+                className="h-full w-full object-contain p-5"
+                draggable={false}
+            />
+            <div className="pointer-events-none absolute bottom-3 right-5 text-xs text-neutral-400">
+                {page}
+            </div>
         </div>
     );
 }

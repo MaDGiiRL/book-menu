@@ -1,3 +1,5 @@
+/* book3d.css */
+
 .stage {
   perspective: 1600px;
   perspective-origin: 50% 35%;
@@ -9,7 +11,6 @@
 
 .leaf {
   transform-style: preserve-3d;
-  transform-origin: left center;
   backface-visibility: hidden;
   will-change: transform;
 }
@@ -36,4 +37,9 @@
 
 .gutter-right {
   background: linear-gradient(to left, rgba(0, 0, 0, 0.22), transparent 26%);
+}
+
+/* MOBILE: lascia scroll verticale fluido, ma consente swipe orizzontale */
+.viewer {
+  touch-action: pan-y;
 }
